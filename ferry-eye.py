@@ -94,7 +94,9 @@ for archiveFile in cleanFiles:
 
         # find the travel data tables on the page
         # tables = soup.findAll('table', style="BORDER-TOP: #000 1px solid;font-size:11px", width="100%")
-        tables = soup.findAll("table", {"class": "c6"})
+        tables = soup.findAll("table", {"class": "c5"})
+        if len(tables) == 0:
+            break
 
         dbRows = []
 
