@@ -13,7 +13,7 @@
 	<key>ProgramArguments</key>
 	<array>
 		<string>/Users/paul/git/ferry-eye/archive-ferry.sh</string>
-		<string>/Users/paul/OneDrive/BCFerries/HSB/route03/</string>
+		<string>/Users/paul/OneDrive/BCFerries</string>
 	</array>
 	<key>RunAtLoad</key>
 	<true/>
