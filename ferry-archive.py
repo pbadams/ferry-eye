@@ -2,7 +2,7 @@
 import sys
 import os
 import errno
-from datetime import datetime, date, time
+from datetime import datetime, date
 import re
 import sqlite3 as lite
 from tidylib import tidy_document, release_tidy_doc
@@ -34,11 +34,11 @@ def isoDate(date_str, time_str):
     # test if clean time string is in the format "HH:MM XM"
     if time_format.match(time_str) is not None:
         # create a date object from date and time
-        date = datetime.strptime(date_time_str, '%B %d, %Y %I:%M %p')
+        d = datetime.strptime(date_time_str, '%B %d, %Y %I:%M %p')
     else:
          # create a date object from date alone
-        date = datetime.strptime(date_str, '%B %d, %Y')
-    return date.isoformat()
+        d = datetime.strptime(date_str, '%B %d, %Y')
+    return d.isoformat()
 
 
 if len(sys.argv) == 1:
@@ -86,7 +86,7 @@ try:
 
     # Create table if none exists
     cur.execute(
-        "CREATE TABLE IF NOT EXISTS routes(dept_id INTEGER PRIMARY KEY, route TEXT, departure TEXT, vessel TEXT, departure_sched DATETIME, departure_actual DATETIME, arrival DATETIME, status TEXT);"
+        "CREATE TABLE IF NOT EXISTS routes(route TEXT, departure TEXT, vessel TEXT, departure_sched DATETIME, departure_actual DATETIME, arrival DATETIME, status TEXT, PRIMARY KEY (route, departure, departure_sched) );"
     )
     cur.execute("SELECT COUNT(*) FROM routes;")
     beforeRowCount = cur.fetchone()
@@ -189,7 +189,7 @@ for route in routes:
     # Database insert
 
 print(tabulate(dbRows,
-               headers=["Department", "Route", "From", "Vessel", "Sched. Departure",
+               headers=["Route", "From", "Vessel", "Sched. Departure",
                         "Actual Departure", "Arrival", "Status"],
                tablefmt="grid")
       )
@@ -207,7 +207,7 @@ try:
     print("Inserting records into SQLite databse " + db )
     cur.executemany(
         # "INSERT INTO dept(dept_name, route, from_port, vessel, departure_sched, departure_actual, arrival, status) VALUES(?, ?, ?, ?, ?, ?, ?, ?)", dbRows)
-        "INSERT OR REPLACE INTO routes(route, departure, vessel, departure_sched, departure_actual, arrival, status) VALUES(?, ?, ?, ?, ?, ?, ?)", dbRows)
+        "INSERT OR IGNORE INTO routes(route, departure, vessel, departure_sched, departure_actual, arrival, status) VALUES(?, ?, ?, ?, ?, ?, ?)", dbRows)
     
     con.commit()
     cur.execute("SELECT COUNT(*) FROM routes;")
