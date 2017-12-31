@@ -5,8 +5,9 @@ import requests
 import os
 import errno
 import datetime
-from tidylib import tidy_document
+from tidylib import tidy_document, release_tidy_doc
 
+# Make directory tree if it doesn't exist
 def mkdir_p(path):
     try:
         os.makedirs(path)
@@ -20,11 +21,9 @@ def mkdir_p(path):
 
 archiveDir = "/Users/pauladams/OneDrive/BCFerries"
 url = "http://orca.bcferries.com:8080/cc/marqui/arrivals-departures.asp"
-params = {
-    "DEPT": "HSB",
-    "route": "03"
-}
 
+# Ferry route numbers, using mainland port codes for departures 
+# Used as paramters for HTTP GET request, and to form archive filepaths
 routes = (
     {"route": "01", "DEPT": "TSA", },
     {"route": "02", "DEPT": "HSB", },
@@ -33,26 +32,37 @@ routes = (
     {"route": "30", "DEPT": "TSA", }
 )
 
+# LibTidy Options
 BASE_OPTIONS = {
-    "indent": 1,         # Pretty; not too much of a performance hit
+    "indent": 1,           # Pretty; not too much of a performance hit
     "tidy-mark": 0,        # No tidy meta tag in output
     "wrap": 1,             # No wrapping
     "alt-text": "",        # Help ensure validation
     "output-xhtml": 1,     # Convert to XHTML
     "doctype": "strict",
     "clean": 1,
+    "drop-proprietary-attributes": 1,
     "join-styles": 1
 }
 
+# datestamp for clean archive files
 datestamp = datetime.datetime.now().strftime('%Y-%m-%d')
 
+# Main loop - Iterate over routes set
 for route in routes:
-    resp = requests.get(url, params=route)
-    timestamp = datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
+
     rt = route["route"]
     dep = route["DEPT"]
-    # 'HSB-Route03-%Y-%m-%d.CLEAN.html'
-    filePath = "{}/route{}/{}".format(archiveDir, rt, dep, )
+    print("Processing Route: {}, departing from {}".format( rt, dep, ))
+
+    # Get current status page for route number from departure port
+    resp = requests.get(url, params=route)
+
+    # Timestamp for raw HTML archive (we could be doing this multiple times a day)
+    timestamp = datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
+
+    # Build filepath for archive, create directory tree if not present
+    filePath = "{}/Route{}/{}".format(archiveDir, rt, dep, )
     mkdir_p(filePath)
 
     ####
@@ -70,3 +80,8 @@ for route in routes:
     file = open(fileName, "w+")
     file.write(cleanHTML[0])
     file.close()
+
+    # Release memory used by DOC tree
+    release_tidy_doc()
+
+print("Processing ended")
