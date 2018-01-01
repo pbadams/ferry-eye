@@ -50,6 +50,45 @@ def isoDate(date_str, time_str):
             d = None
     return d
 
+####
+# Process clean HTML and return database rows
+#
+def get_rows_for_route_from_html( r, d, html ):
+
+    rows = []
+
+    # Scrape HTML doc for tables containing ferry status
+    soup = BeautifulSoup(html, 'html.parser')
+
+    # Find the last updated time on the page
+    # elem = soup.find("td", {"class": "c3"})
+    elem = soup.find('td', style="font-size:11px", align="right")
+    dateList = clean_text(elem.text)
+    dateList = dateList.split(" ")[-3:]
+    dateString = ' '.join(dateList)
+
+    # loop through tables and create array of sets ready for DB insert
+    tables = soup.findAll(
+        'table', style="BORDER-TOP: #000 1px solid;font-size:11px", width="100%")
+
+    for idx, table in enumerate(tables):
+        if idx == 1:
+            dep = route["arrive"]
+
+        for tr in table.find_all('tr')[1:]:
+            tds = tr.find_all('td')
+            # If there is no Actual Departure Time then skip this record
+            if len(clean_text(tds[2].text)) > 0:
+                vessel = clean_text(tds[0].text)
+                isoDepartureSched = isoDate(dateString, tds[1].text)
+                isoDepartureActual = isoDate(dateString, tds[2].text)
+                isoArrival = isoDate(dateString, tds[3].text)
+                eta = is_eta(clean_text(tds[3].text))
+                status = clean_text(tds[4].text)
+                rows.append(
+                    (r, d, vessel, isoDepartureSched, isoDepartureActual, isoArrival, eta, status))
+    
+    return rows
 
 if len(sys.argv) == 1:
     print("require directory and database")
@@ -162,38 +201,8 @@ for route in routes:
     # Release memory used by DOC tree
     release_tidy_doc()
 
-    # Scrape HTML doc for tables containing ferry status
-    soup = BeautifulSoup(cleanHTML[0], 'html.parser')
-
-    # Find the last updated time on the page
-    # elem = soup.find("td", {"class": "c3"})
-    elem = soup.find('td', style="font-size:11px", align="right")
-    dateList = clean_text(elem.text)
-    dateList = dateList.split(" ")[-3:]
-    dateString = ' '.join(dateList)
-
-    # loop through tables and create array of sets ready for DB insert
-    tables = soup.findAll(
-        'table', style="BORDER-TOP: #000 1px solid;font-size:11px", width="100%")
-
-    for idx, table in enumerate(tables):
-        if idx == 1:
-            dep = route["arrive"]
-
-        for tr in table.find_all('tr')[1:]:
-            tds = tr.find_all('td')
-            # If there is no Actual Departure Time then skip this record
-            if len(clean_text(tds[2].text)) > 0:
-                vessel = clean_text(tds[0].text)
-                isoDepartureSched = isoDate(dateString, tds[1].text)
-                isoDepartureActual = isoDate(dateString, tds[2].text)
-                isoArrival = isoDate(dateString, tds[3].text)
-                eta = is_eta(clean_text(tds[3].text))
-                status = clean_text(tds[4].text)
-                dbRows.append(
-                    (rt, dep, vessel, isoDepartureSched, isoDepartureActual, isoArrival, eta, status))
-
-    # Database insert
+    # Append rows extracted from clean HTML to dbRows array
+    dbRows = dbRows + get_rows_for_route_from_html( rt, dep, cleanHTML[0] )
 
 print(tabulate(dbRows,
                headers=["Route", "From", "Vessel", "Sched. Departure",
@@ -213,7 +222,6 @@ try:
     # cur.execute("CREATE TABLE IF NOT EXISTS dept (dept_id INTEGER PRIMARY KEY AUTOINCREMENT, dept_name TEXT, route TEXT, from_port TEXT, vessel TEXT, departure_sched TEXT, departure_actual TEXT, arrival TEXT, status TEXT);")
     print("Inserting records into SQLite databse " + db)
     cur.executemany(
-        # "INSERT INTO dept(dept_name, route, from_port, vessel, departure_sched, departure_actual, arrival, status) VALUES(?, ?, ?, ?, ?, ?, ?, ?)", dbRows)
         "INSERT OR REPLACE INTO routes(route, departure, vessel, departure_sched, departure_actual, arrival, eta, status) VALUES(?, ?, ?, ?, ?, ?, ?, ?)", dbRows)
 
     con.commit()
@@ -221,7 +229,7 @@ try:
     afterRowCount = cur.fetchone()
     print("Rows inserted: {}".format(afterRowCount[0] - beforeRowCount[0]))
     print("Total rows changed: ", con.total_changes)
-    print("Total rows in database: {}".format(afterRowCount[0]))
+    print("Total rows in database: {}".format(cur.rowcount ))
 
 except lite.Error as e:
 
