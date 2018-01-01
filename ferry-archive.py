@@ -2,6 +2,7 @@
 import sys
 import os
 import errno
+import json
 from datetime import datetime, date
 import re
 import sqlite3 as lite
@@ -11,7 +12,7 @@ import requests
 from tabulate import tabulate
 
 
-def clean_text( text ):
+def clean_text(text):
     return " ".join(text.split())
 
 
@@ -45,36 +46,29 @@ if len(sys.argv) == 1:
     print("require directory and database")
     print("ferryeye.py /path/to/html_dir sqlite_db_name.db")
     exit(1)
-archive_dir = sys.argv[1]
-db = archive_dir + "/" + sys.argv[2]
+
+
+try:
+    with open('config.json') as json_data_file:
+        CONFIG = json.load(json_data_file)
+except EnvironmentError:  # parent of IOError, OSError *and* WindowsError where available
+    print('Cannot open config.json')
+    print(EnvironmentError.errno)
+
+archive_dir = CONFIG["archive_dir"]
+db = CONFIG["db"]
 # Parse strings into Date object and return an ISO 8601 string
 # Regex to find valid time format string "HH:MM XM"
 time_format = re.compile("^\d{1,2}:\d{2} (AM|PM)$")
 
-url = "http://orca.bcferries.com:8080/cc/marqui/arrivals-departures.asp"
+url = CONFIG["url"]
 
 # Ferry route numbers, using mainland port codes for departures
 # Used as paramters for HTTP GET request, and to form archive filepaths
-routes = (
-    {"route": "01", "DEPT": "TSA", "arrive": "SWB"},
-    {"route": "02", "DEPT": "HSB", "arrive": "NAN"},
-    {"route": "03", "DEPT": "HSB", "arrive": "LNG"},
-    {"route": "08", "DEPT": "HSB", "arrive": "BOW"},
-    {"route": "30", "DEPT": "TSA", "arrive": "DUK"}
-)
+routes = CONFIG["routes"]
 
 # LibTidy Options
-BASE_OPTIONS = {
-    "indent": 1,           # Pretty; not too much of a performance hit
-    "tidy-mark": 0,        # No tidy meta tag in output
-    "wrap": 1,             # No wrapping
-    "alt-text": "",        # Help ensure validation
-    "output-xhtml": 1,     # Convert to XHTML
-    "doctype": "strict",
-    "clean": 1,
-    "drop-proprietary-attributes": 1,
-    "join-styles": 1
-}
+BASE_OPTIONS = CONFIG["BASE_OPTIONS"]
 
 ####
 # Get last date of entries in Sqlite DB
@@ -91,7 +85,7 @@ try:
     cur.execute("SELECT COUNT(*) FROM routes;")
     beforeRowCount = cur.fetchone()
     print("Current rows in database: {}".format(beforeRowCount[0]))
-    
+
     # Get date of last entry
     cur.execute(
         "SELECT departure_sched FROM routes WHERE departure_sched = (SELECT max(departure_sched) FROM routes);")
@@ -204,15 +198,15 @@ try:
 
     # Create table if none exists
     # cur.execute("CREATE TABLE IF NOT EXISTS dept (dept_id INTEGER PRIMARY KEY AUTOINCREMENT, dept_name TEXT, route TEXT, from_port TEXT, vessel TEXT, departure_sched TEXT, departure_actual TEXT, arrival TEXT, status TEXT);")
-    print("Inserting records into SQLite databse " + db )
+    print("Inserting records into SQLite databse " + db)
     cur.executemany(
         # "INSERT INTO dept(dept_name, route, from_port, vessel, departure_sched, departure_actual, arrival, status) VALUES(?, ?, ?, ?, ?, ?, ?, ?)", dbRows)
-        "INSERT OR IGNORE INTO routes(route, departure, vessel, departure_sched, departure_actual, arrival, status) VALUES(?, ?, ?, ?, ?, ?, ?)", dbRows)
-    
+        "INSERT OR REPLACE INTO routes(route, departure, vessel, departure_sched, departure_actual, arrival, status) VALUES(?, ?, ?, ?, ?, ?, ?)", dbRows)
+
     con.commit()
     cur.execute("SELECT COUNT(*) FROM routes;")
     afterRowCount = cur.fetchone()
-    print("Rows inserted: {}".format(afterRowCount[0]-beforeRowCount[0]))
+    print("Rows inserted: {}".format(afterRowCount[0] - beforeRowCount[0]))
     print("Total rows in database: {}".format(afterRowCount[0]))
 
 except lite.Error as e:

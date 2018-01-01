@@ -1,0 +1,23 @@
+{
+    "db": "/Users/pauladams/OneDrive/BCFerries//ferry-eye.db",
+    "archive_dir": "/Users/pauladams/OneDrive/BCFerries/",
+    "routes": [
+        { "route": "01", "DEPT": "TSA", "arrive": "SWB" },
+        { "route": "02", "DEPT": "HSB", "arrive": "NAN" },
+        { "route": "03", "DEPT": "HSB", "arrive": "LNG" },
+        { "route": "08", "DEPT": "HSB", "arrive": "BOW" },
+        { "route": "30", "DEPT": "TSA", "arrive": "DUK" }
+    ],
+    "url": "http://orca.bcferries.com:8080/cc/marqui/arrivals-departures.asp",
+    "BASE_OPTIONS": {
+        "indent": 1,
+        "tidy-mark": 0,
+        "wrap": 1,
+        "alt-text": "",
+        "output-xhtml": 1,
+        "doctype": "strict",
+        "clean": 1,
+        "drop-proprietary-attributes": 1,
+        "join-styles": 1
+    }
+}
