@@ -1,6 +1,6 @@
 {
-    "db": "/Users/pauladams/OneDrive/BCFerries//ferry-eye.db",
-    "archive_dir": "/Users/pauladams/OneDrive/BCFerries/",
+    "db": "/Users/pauladams/OneDrive/BCFerries/ferry-eye.db",
+    "archive_dir": "/Users/pauladams/OneDrive/BCFerries",
     "routes": [
         { "route": "01", "DEPT": "TSA", "arrive": "SWB" },
         { "route": "02", "DEPT": "HSB", "arrive": "NAN" },
