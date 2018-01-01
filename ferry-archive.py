@@ -16,6 +16,12 @@ def clean_text(text):
     return " ".join(text.split())
 
 
+def is_eta(t):
+    if eta_format.match(t):
+        return True
+    else:
+        return False
+
 def mkdir_p(path):
     # Make directory tree if it doesn't exist
     try:
@@ -30,16 +36,19 @@ def mkdir_p(path):
 
 def isoDate(date_str, time_str):
      # Clean out all white space characters from time string
-    time_str = " ".join(time_str.split())
+    time_str = clean_text(time_str)
     date_time_str = date_str + " " + time_str
     # test if clean time string is in the format "HH:MM XM"
-    if time_format.match(time_str) is not None:
+    if time_format.match(time_str):
         # create a date object from date and time
-        d = datetime.strptime(date_time_str, '%B %d, %Y %I:%M %p')
+        d = datetime.strptime(date_time_str, '%B %d, %Y %I:%M %p').isoformat()
     else:
-         # create a date object from date alone
-        d = datetime.strptime(date_str, '%B %d, %Y')
-    return d.isoformat()
+        if eta_format.match(time_str):
+            d = datetime.strptime(date_time_str, '%B %d, %Y ETA: %I:%M %p').isoformat()
+        else:
+            # create a date object from date alone
+            d = None
+    return d
 
 
 if len(sys.argv) == 1:
@@ -48,18 +57,21 @@ if len(sys.argv) == 1:
     exit(1)
 
 
+# Try loading config.json
 try:
     with open('config.json') as json_data_file:
         CONFIG = json.load(json_data_file)
 except EnvironmentError:  # parent of IOError, OSError *and* WindowsError where available
     print('Cannot open config.json')
     print(EnvironmentError.errno)
+    exit()
 
 archive_dir = CONFIG["archive_dir"]
 db = CONFIG["db"]
-# Parse strings into Date object and return an ISO 8601 string
 # Regex to find valid time format string "HH:MM XM"
 time_format = re.compile("^\d{1,2}:\d{2} (AM|PM)$")
+# Regex to find valid time format string "ETA: HH:MM XM"
+eta_format = re.compile("^ETA: \d{1,2}:\d{2} (AM|PM)$")
 
 url = CONFIG["url"]
 
@@ -80,7 +92,7 @@ try:
 
     # Create table if none exists
     cur.execute(
-        "CREATE TABLE IF NOT EXISTS routes(route TEXT, departure TEXT, vessel TEXT, departure_sched DATETIME, departure_actual DATETIME, arrival DATETIME, status TEXT, PRIMARY KEY (route, departure, departure_sched) );"
+        "CREATE TABLE IF NOT EXISTS routes(route TEXT, departure TEXT, vessel TEXT, departure_sched DATETIME, departure_actual DATETIME, arrival DATETIME, eta BOOLEAN, status TEXT, PRIMARY KEY (route, departure, departure_sched) );"
     )
     cur.execute("SELECT COUNT(*) FROM routes;")
     beforeRowCount = cur.fetchone()
@@ -176,15 +188,16 @@ for route in routes:
                 isoDepartureSched = isoDate(dateString, tds[1].text)
                 isoDepartureActual = isoDate(dateString, tds[2].text)
                 isoArrival = isoDate(dateString, tds[3].text)
+                eta = is_eta(clean_text(tds[3].text))
                 status = clean_text(tds[4].text)
                 dbRows.append(
-                    (rt, dep, vessel, isoDepartureSched, isoDepartureActual, isoArrival, status))
+                    (rt, dep, vessel, isoDepartureSched, isoDepartureActual, isoArrival, eta, status))
 
     # Database insert
 
 print(tabulate(dbRows,
                headers=["Route", "From", "Vessel", "Sched. Departure",
-                        "Actual Departure", "Arrival", "Status"],
+                        "Actual Departure", "Arrival", "ETA", "Status"],
                tablefmt="grid")
       )
 
@@ -201,12 +214,13 @@ try:
     print("Inserting records into SQLite databse " + db)
     cur.executemany(
         # "INSERT INTO dept(dept_name, route, from_port, vessel, departure_sched, departure_actual, arrival, status) VALUES(?, ?, ?, ?, ?, ?, ?, ?)", dbRows)
-        "INSERT OR REPLACE INTO routes(route, departure, vessel, departure_sched, departure_actual, arrival, status) VALUES(?, ?, ?, ?, ?, ?, ?)", dbRows)
+        "INSERT OR REPLACE INTO routes(route, departure, vessel, departure_sched, departure_actual, arrival, eta, status) VALUES(?, ?, ?, ?, ?, ?, ?, ?)", dbRows)
 
     con.commit()
     cur.execute("SELECT COUNT(*) FROM routes;")
     afterRowCount = cur.fetchone()
     print("Rows inserted: {}".format(afterRowCount[0] - beforeRowCount[0]))
+    print("Total rows changed: ", con.total_changes)
     print("Total rows in database: {}".format(afterRowCount[0]))
 
 except lite.Error as e:
