@@ -5,6 +5,8 @@ import errno
 import json
 from datetime import datetime, date
 import re
+import glob
+import fnmatch
 import sqlite3 as lite
 from tidylib import tidy_document, release_tidy_doc
 from bs4 import BeautifulSoup
@@ -21,6 +23,7 @@ def is_eta(t):
         return True
     else:
         return False
+
 
 def mkdir_p(path):
     # Make directory tree if it doesn't exist
@@ -44,16 +47,104 @@ def isoDate(date_str, time_str):
         d = datetime.strptime(date_time_str, '%B %d, %Y %I:%M %p').isoformat()
     else:
         if eta_format.match(time_str):
-            d = datetime.strptime(date_time_str, '%B %d, %Y ETA: %I:%M %p').isoformat()
+            d = datetime.strptime(
+                date_time_str, '%B %d, %Y ETA: %I:%M %p').isoformat()
         else:
             # create a date object from date alone
             d = None
     return d
 
+
+def insert_records_from_URL():
+    rows = []
+    for route in routes:
+
+        rt = route["route"]
+        dep = route["DEPT"]
+        arr = route["arrive"]
+        print("Processing Route: {}, departing from {}".format(rt, dep, ))
+
+        # Get current status page for route number from departure port
+        resp = requests.get(url, params=route)
+
+        # Timestamp for raw HTML archive (we could be doing this multiple times a day)
+        timestamp = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
+
+        # Build filepath for archive, create directory tree if not present
+        filePath = "{}/Route{}/{}".format(archive_dir, rt, dep, )
+        mkdir_p(filePath)
+
+        ####
+        # Write raw HTML archive
+        fileName = "{}/{}-Route{}-{}.html".format(filePath, dep, rt, timestamp)
+        file = open(fileName, "w+")
+        file.write(resp.text)
+        file.close()
+
+        ####
+        # write CLEAN HTML archive
+        fileName = "{}/{}-Route{}-{}.CLEAN.html".format(
+            filePath, dep, rt, datestamp)
+        cleanHTML = tidy_document(resp.text)
+        file = open(fileName, "w+")
+        file.write(cleanHTML[0])
+        file.close()
+
+        # Release memory used by DOC tree
+        release_tidy_doc()
+
+        # Append rows extracted from clean HTML to dbRows array
+        rows = rows + get_rows_for_route_from_html(rt, dep, arr, cleanHTML[0])
+    
+    return rows
+
+def recursive_glob(rootdir, pattern):
+
+	matches = []
+	for root, dirnames, filenames in os.walk(rootdir):
+	  for filename in fnmatch.filter(filenames, pattern):
+		  matches.append(os.path.join(root, filename))
+
+	return matches
+
+def insert_records_from_archive_files():
+    rows = []
+    archive_Files = recursive_glob( archive_dir, "*.CLEAN.*" )
+    for f in archive_Files:
+
+        # Route from filepath
+        # Example TSA-Route01-2017-12-30.CLEAN.html
+
+        # Regex to find departure and route
+        # Regex group 1 == Departure ("HSB")
+        # Regex group 2 == Route Number ("02")
+        result = re.search(r"(\b[A-Z]{3})-Route(\d{2})-", f)
+        dep = result.group(1)
+        rt = result.group(2)
+
+        # Get the arrival port code from the dictionary 
+        # that contains the same route value
+        route_dict = [d for d in routes if d['route'] == rt ][0]
+        arr = route_dict["arrive"]
+
+        print("Processing Route: {}, departing from {}".format(rt, dep, ))
+
+        ####
+        # Read CLEAN HTML archive
+        file = open(f, "r")
+        cleanHTML = file.read()
+        file.close()
+
+        # Append rows extracted from clean HTML to dbRows array
+        rows = rows + get_rows_for_route_from_html(rt, dep, arr, cleanHTML)
+    return rows
+
 ####
 # Process clean HTML and return database rows
 #
-def get_rows_for_route_from_html( r, d, html ):
+
+
+def get_rows_for_route_from_html(r, d, a, html):
 
     rows = []
 
@@ -73,7 +164,7 @@ def get_rows_for_route_from_html( r, d, html ):
 
     for idx, table in enumerate(tables):
         if idx == 1:
-            dep = route["arrive"]
+            d = a
 
         for tr in table.find_all('tr')[1:]:
             tds = tr.find_all('td')
@@ -87,8 +178,9 @@ def get_rows_for_route_from_html( r, d, html ):
                 status = clean_text(tds[4].text)
                 rows.append(
                     (r, d, vessel, isoDepartureSched, isoDepartureActual, isoArrival, eta, status))
-    
+
     return rows
+
 
 if len(sys.argv) == 1:
     print("require directory and database")
@@ -163,46 +255,8 @@ finally:
 # Today's datestamp for cleaned archive files
 datestamp = datetime.now().strftime('%Y-%m-%d')
 
-dbRows = []
-
-# Main loop - Iterate over routes set
-for route in routes:
-
-    rt = route["route"]
-    dep = route["DEPT"]
-    print("Processing Route: {}, departing from {}".format(rt, dep, ))
-
-    # Get current status page for route number from departure port
-    resp = requests.get(url, params=route)
-
-    # Timestamp for raw HTML archive (we could be doing this multiple times a day)
-    timestamp = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
-
-    # Build filepath for archive, create directory tree if not present
-    filePath = "{}/Route{}/{}".format(archive_dir, rt, dep, )
-    mkdir_p(filePath)
-
-    ####
-    # Write raw HTML archive
-    fileName = "{}/{}-Route{}-{}.html".format(filePath, dep, rt, timestamp)
-    file = open(fileName, "w+")
-    file.write(resp.text)
-    file.close()
-
-    ####
-    # write CLEAN HTML archive
-    fileName = "{}/{}-Route{}-{}.CLEAN.html".format(
-        filePath, dep, rt, datestamp)
-    cleanHTML = tidy_document(resp.text)
-    file = open(fileName, "w+")
-    file.write(cleanHTML[0])
-    file.close()
-
-    # Release memory used by DOC tree
-    release_tidy_doc()
-
-    # Append rows extracted from clean HTML to dbRows array
-    dbRows = dbRows + get_rows_for_route_from_html( rt, dep, cleanHTML[0] )
+#dbRows = insert_records_from_URL()
+dbRows = insert_records_from_archive_files()
 
 print(tabulate(dbRows,
                headers=["Route", "From", "Vessel", "Sched. Departure",
@@ -229,7 +283,7 @@ try:
     afterRowCount = cur.fetchone()
     print("Rows inserted: {}".format(afterRowCount[0] - beforeRowCount[0]))
     print("Total rows changed: ", con.total_changes)
-    print("Total rows in database: {}".format(cur.rowcount ))
+    print("Total rows in database: {}".format(cur.rowcount))
 
 except lite.Error as e:
 
