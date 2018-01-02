@@ -128,7 +128,8 @@ def insert_records_from_archive_files():
         route_dict = [d for d in routes if d['route'] == rt ][0]
         arr = route_dict["arrive"]
 
-        print("Processing Route: {}, departing from {}".format(rt, dep, ))
+        if args.verbose:
+            print("Processing Route: {}, departing from {}".format(rt, dep, ))
 
         ####
         # Read CLEAN HTML archive
@@ -191,12 +192,12 @@ def get_rows_for_route_from_html(r, d, a, html):
 parser = argparse.ArgumentParser()  
 text = "Archives BC Ferry realtime schedule information in a database, and optionally as html pages, for later review."
 parser = argparse.ArgumentParser(description = text)  
-parser.add_argument("-a", "--archive-dir", help="Override the default archive file root directory", action="store_true")
+parser.add_argument("-a", "--archive-dir", help="Override the default archive file root directory", type=str )
 parser.add_argument("-A", "--add-archives", help="Gets all *.CLEAN.HTML archives and writes schedules to database", action="store_true")
-parser.add_argument("-V", "--version", help="show program version", action="store_true")
+parser.add_argument("-V", "--version", help="Show program version", action="store_true")
+parser.add_argument("-v", "--verbose", help="Print processing information", action="store_true")
 
-parser.parse_args()  
-
+args = parser.parse_args()
 
 # Try loading config.json
 try:
@@ -207,7 +208,10 @@ except EnvironmentError:  # parent of IOError, OSError *and* WindowsError where 
     print(EnvironmentError.errno)
     exit()
 
-archive_dir = CONFIG["archive_dir"]
+if args.archive_dir:
+    archive_dir = args.archive_dir
+else:
+    archive_dir = CONFIG["archive_dir"]
 db = CONFIG["db"]
 # Regex to find valid time format string "HH:MM XM"
 time_format = re.compile("^\d{1,2}:\d{2} (AM|PM)$")
@@ -237,7 +241,8 @@ try:
     )
     cur.execute("SELECT COUNT(*) FROM routes;")
     beforeRowCount = cur.fetchone()
-    print("Current rows in database: {}".format(beforeRowCount[0]))
+    if args.verbose:
+        print("Current rows in database: {}".format(beforeRowCount[0]))
 
     # Get date of last entry
     cur.execute(
@@ -265,10 +270,13 @@ finally:
 # Today's datestamp for cleaned archive files
 datestamp = datetime.now().strftime('%Y-%m-%d')
 
-#dbRows = insert_records_from_URL()
-dbRows = insert_records_from_archive_files()
+if args.add_archives:
+    dbRows = insert_records_from_archive_files()
+else:
+    dbRows = insert_records_from_URL()
 
-print(tabulate(dbRows,
+if args.verbose:
+    print(tabulate(dbRows,
                headers=["Route", "From", "Vessel", "Sched. Departure",
                         "Actual Departure", "Arrival", "ETA", "Status"],
                tablefmt="grid")
@@ -284,16 +292,20 @@ try:
 
     # Create table if none exists
     # cur.execute("CREATE TABLE IF NOT EXISTS dept (dept_id INTEGER PRIMARY KEY AUTOINCREMENT, dept_name TEXT, route TEXT, from_port TEXT, vessel TEXT, departure_sched TEXT, departure_actual TEXT, arrival TEXT, status TEXT);")
-    print("Inserting records into SQLite databse " + db)
+    if args.verbose:
+       print("Inserting records into SQLite databse " + db)
+
     cur.executemany(
         "INSERT OR REPLACE INTO routes(route, departure, vessel, departure_sched, departure_actual, arrival, eta, status) VALUES(?, ?, ?, ?, ?, ?, ?, ?)", dbRows)
 
     con.commit()
     cur.execute("SELECT COUNT(*) FROM routes;")
     afterRowCount = cur.fetchone()
-    print("Rows inserted: {}".format(afterRowCount[0] - beforeRowCount[0]))
-    print("Total rows changed: ", con.total_changes)
-    print("Total rows in database: {}".format(cur.rowcount))
+    if args.verbose:
+
+        print("Rows inserted: {}".format(afterRowCount[0] - beforeRowCount[0]))
+        print("Total rows changed: ", con.total_changes)
+        print("Total rows in database: {}".format(cur.rowcount))
 
 except lite.Error as e:
 
@@ -307,5 +319,5 @@ finally:
 
     if con:
         con.close()
-
-print("Processing ended")
+if args.verbose:
+    print("Processing ended")
