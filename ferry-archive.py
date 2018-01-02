@@ -2,6 +2,7 @@
 import sys
 import os
 import errno
+import argparse
 import json
 from datetime import datetime, date
 import re
@@ -182,10 +183,19 @@ def get_rows_for_route_from_html(r, d, a, html):
     return rows
 
 
-if len(sys.argv) == 1:
-    print("require directory and database")
-    print("ferryeye.py /path/to/html_dir sqlite_db_name.db")
-    exit(1)
+################################### 
+# Start
+###################################
+
+# initiate the parser
+parser = argparse.ArgumentParser()  
+text = "Archives BC Ferry realtime schedule information in a database, and optionally as html pages, for later review."
+parser = argparse.ArgumentParser(description = text)  
+parser.add_argument("-a", "--archive-dir", help="Override the default archive file root directory", action="store_true")
+parser.add_argument("-A", "--add-archives", help="Gets all *.CLEAN.HTML archives and writes schedules to database", action="store_true")
+parser.add_argument("-V", "--version", help="show program version", action="store_true")
+
+parser.parse_args()  
 
 
 # Try loading config.json
